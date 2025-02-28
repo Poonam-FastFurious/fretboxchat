@@ -7,7 +7,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new SocketIOServer(server, {
   cors: {
-    origin: "https://chat.compliancetownhall.com",
+    origin: process.env.frontendurl,
 
     credentials: true,
   },

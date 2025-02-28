@@ -350,6 +350,8 @@ const updateUser = asyncHandler(async (req, res) => {
     honoursAndCertifications,
   } = req.body;
 
+  console.log("Received userId:", userId);
+  console.log("Is Valid ObjectId:", mongoose.isValidObjectId(userId));
   // Validate user ID
   if (!mongoose.isValidObjectId(userId)) {
     throw new ApiError(400, "Invalid user ID");
@@ -448,34 +450,33 @@ const uploadProfilePhoto = asyncHandler(async (req, res) => {
   if (!user) {
     throw new ApiError(404, "User not found");
   }
+  const imageLocalPath = req.files?.profilePhoto[0]?.path;
 
-  const file = req.files?.profilePhoto[0];
-  if (!file) {
-    throw new ApiError(400, "Image file is required");
+  if (!imageLocalPath) {
+    throw new ApiError(400, "Image files are required");
   }
 
-  // Upload the profile photo to S3 directly from the buffer
-  const uploadedImage = await uploadToS3(file.buffer, file.originalname);
+  const uploadedImage = await uploadOnCloudinary(imageLocalPath);
 
   if (!uploadedImage) {
-    throw new ApiError(400, "Failed to upload image to S3");
+    throw new ApiError(400, "Failed to upload image");
   }
 
-  // Delete the old profile photo if it exists
+  // Delete old profile photo if it exists
   if (user.profilePhoto) {
-    // If there was an old profile photo, delete it from S3 (if applicable)
-    const oldPhotoKey = user.profilePhoto.split("/").pop().split(".")[0];
+    const oldPublicId = user.profilePhoto.split("/").pop().split(".")[0];
 
     try {
-      await deleteFromS3(oldPhotoKey); // Custom function to delete from S3 (you need to implement this)
-      console.log("Old profile photo deleted successfully from S3");
+      await cloudinary.uploader.destroy(oldPublicId);
+      console.log("Old profile photo deleted successfully from Cloudinary");
     } catch (error) {
-      console.error("Error deleting old profile photo from S3:", error);
+      console.error("Error deleting old profile photo from Cloudinary:", error);
     }
   }
+  // Save the new profile photo
 
-  // Save the new profile photo URL in the user's document
-  const updatedData = { profilePhoto: uploadedImage.Location }; // S3 URL
+  // Update the user's profile photo path in the database
+  const updatedData = { profilePhoto: uploadedImage.url };
   const updatedUser = await User.findByIdAndUpdate(userId, updatedData, {
     new: true,
     runValidators: true,
@@ -491,7 +492,6 @@ const uploadProfilePhoto = asyncHandler(async (req, res) => {
       )
     );
 });
-
 const removeProfilePhoto = asyncHandler(async (req, res) => {
   const userId = req.params.userId || req.body.userId || req.query.userId;
 

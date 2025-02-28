@@ -24,6 +24,10 @@ const messageModel = mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Chat",
     },
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message", // Reference to the message being replied to
+    },
     sentOn: {
       type: Date,
     },

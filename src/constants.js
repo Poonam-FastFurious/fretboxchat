@@ -1,1 +1,1 @@
-export const DB_NAME = "compliancestownhall";
+export const DB_NAME = "fretboxchat";

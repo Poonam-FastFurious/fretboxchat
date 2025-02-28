@@ -69,26 +69,72 @@ const createCTHMainGroup = async () => {
     console.error("Error creating CTHMain group:", error.message);
   }
 };
-
 const fetchChats = asyncHandler(async (req, res) => {
   try {
-    Chat.find({ users: { $elemMatch: { $eq: req.user } } })
-      .populate("users", "-password")
-      .populate("groupAdmin", "-password")
-      .populate("latestMessage")
-      .sort({ updatedAt: -1 })
-      .then(async (results) => {
-        results = await User.populate(results, {
-          path: "latestMessage.sender",
-          select: "name avatar email",
-        });
-        res.status(200).send(results);
-      });
+    const userId = req.user._id; // Logged-in user ID
+
+    const chats = await Chat.find({ users: { $elemMatch: { $eq: userId } } })
+      .populate("users", "-password") // Populate users except password
+      .populate("groupAdmin", "-password") // Populate groupAdmin details
+      .populate({
+        path: "latestMessage",
+        populate: { path: "sender", select: "firstName lastName displayName" }, // Populate sender details in latestMessage
+      })
+      .sort({ updatedAt: -1 }); // Sort chats by recent activity
+
+    // Add `otherParticipants` field for each chat
+    const modifiedChats = chats.map((chat) => {
+      let otherParticipants;
+
+      if (chat.isGroupChat) {
+        // Group chat => Sab users except req.user
+        otherParticipants = chat.users
+          .filter((user) => user._id.toString() !== userId.toString())
+          .map((user) => ({
+            _id: user._id,
+            name: user.firstName + " " + user.lastName,
+            profilePhoto: user.profilePhoto || "",
+          }));
+      } else {
+        // Direct chat => Sirf doosre user ki ID & name
+        otherParticipants = chat.users
+          .filter((user) => user._id.toString() !== userId.toString())
+          .map((user) => ({
+            _id: user._id,
+            name: user.firstName + " " + user.lastName,
+            profilePhoto: user.profilePhoto || "",
+          }))[0]; // Direct chat me sirf ek hi banda hoga
+      }
+
+      return { ...chat._doc, otherParticipants };
+    });
+
+    res.status(200).json(modifiedChats);
   } catch (error) {
-    res.status(400);
-    throw new Error(error.message);
+    res.status(400).json({ message: error.message });
   }
 });
+
+// const fetchChats = asyncHandler(async (req, res) => {
+//   try {
+//     Chat.find({ users: { $elemMatch: { $eq: req.user } } })
+//       .populate("users", "-password")
+//       .populate("groupAdmin", "-password")
+//       .populate("latestMessage")
+//       .sort({ updatedAt: -1 })
+//       .then(async (results) => {
+//         results = await User.populate(results, {
+//           path: "latestMessage.sender",
+//           select: "name avatar email",
+//         });
+//         res.status(200).send(results);
+//       });
+//   } catch (error) {
+//     res.status(400);
+//     throw new Error(error.message);
+//   }
+// });
+
 const fetchSingleChat = asyncHandler(async (req, res) => {
   const { chatId } = req.query;
 
