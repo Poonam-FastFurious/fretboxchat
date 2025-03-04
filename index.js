@@ -16,7 +16,7 @@ app.use(express.urlencoded({ limit: "2500mb", extended: true })); // Increase li
 
 app.use(
       cors({
-            origin: "https://fretbox.brandbell.in",
+            origin: "http://localhost:5173",
             credentials: true,
       })
 );
