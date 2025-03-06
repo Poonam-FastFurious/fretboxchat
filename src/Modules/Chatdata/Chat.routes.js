@@ -13,6 +13,7 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage });
 router.get("/:id", protectRoute, getMessages);
 router.post("/send/:id", protectRoute, upload.single("image"), sendMessage);
+// router.post("/send/:id", protectRoute, upload.single("image"), sendMessage);
 router.delete("/delete/:id", protectRoute, deleteMessage);
 
 router.post("/pole/:id", protectRoute, sendMessageWithPoll);
