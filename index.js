@@ -16,7 +16,7 @@ app.use(express.urlencoded({ limit: "2500mb", extended: true })); // Increase li
 
 app.use(
       cors({
-            origin: "http://localhost:5173",
+            origin: ["https://fretbox.brandbell.in", "http://localhost:5173"],
             credentials: true,
       })
 );
@@ -24,11 +24,13 @@ app.use(
 
 import userRoutes from "./src/Modules/User/User.routes.js"
 import messageRoutes from "./src/Modules/Chatdata/Chat.routes.js"
+import groupRoutes from "./src/Modules/Groups/Groupechat.routes.js"
 
 
 
 app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/chat_message", messageRoutes);
+app.use("/api/v1/group", groupRoutes);
 
 server.listen(PORT, () => {
       console.log("serveris listen on port" + PORT);

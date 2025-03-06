@@ -9,7 +9,6 @@ const messageSchema = new mongoose.Schema(
     },
     receiverId: {
       type: mongoose.Schema.Types.ObjectId,
-
       required: true,
     },
     text: {
@@ -25,6 +24,11 @@ const messageSchema = new mongoose.Schema(
     poll: {
       question: String,
       options: [{ text: String, votes: Number }],
+    },
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message", // Reference to the original message
+      default: null,
     },
   },
   { timestamps: true }

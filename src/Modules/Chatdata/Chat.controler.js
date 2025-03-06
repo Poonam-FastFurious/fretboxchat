@@ -33,7 +33,9 @@ export const getMessages = async (req, res) => {
     let messages;
     if (chat && chat.isGroup) {
       // If it's a group, get all messages where receiverId is the group chat ID
-      messages = await Message.find({ receiverId: chatOrUserId }).sort({ createdAt: 1 });
+      messages = await Message.find({ receiverId: chatOrUserId }).sort({
+        createdAt: 1,
+      });
     } else {
       // If it's a private chat, find messages between sender and receiver
       messages = await Message.find({
@@ -53,7 +55,7 @@ export const getMessages = async (req, res) => {
 
 export const sendMessage = async (req, res) => {
   try {
-    const { text, image } = req.body;
+    const { text, replyTo } = req.body;
     const { id: receiverId } = req.params; // Can be User ID or Chat ID
     const senderId = req.user._id;
 
@@ -68,13 +70,12 @@ export const sendMessage = async (req, res) => {
     let imageUrl = null;
     if (req.file) {
       const uploadResponse = await new Promise((resolve, reject) => {
-        cloudinary.uploader.upload_stream(
-          { resource_type: "image" },
-          (error, result) => {
+        cloudinary.uploader
+          .upload_stream({ resource_type: "image" }, (error, result) => {
             if (error) return reject(error);
             resolve(result.secure_url);
-          }
-        ).end(req.file.buffer);
+          })
+          .end(req.file.buffer);
       });
 
       imageUrl = uploadResponse;
@@ -86,9 +87,14 @@ export const sendMessage = async (req, res) => {
       receiverId, // Can be User ID (private) or Chat ID (group)
       text,
       image: imageUrl,
+      replyTo: replyTo || null,
     });
 
     await newMessage.save();
+
+    if (replyTo) {
+      await newMessage.populate("replyTo");
+    }
 
     if (isGroupChat) {
       // Notify all group members except sender
@@ -224,9 +230,7 @@ export const deleteMessage = async (req, res) => {
 
     // Check if the user is the sender of the message
     if (message.senderId.toString() !== userId.toString()) {
-      return res
-        .status(403)
-        .json({ error: "You cant delete this   message" });
+      return res.status(403).json({ error: "You cant delete this   message" });
     }
 
     // Delete the message

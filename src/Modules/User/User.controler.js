@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { generateToken } from "../../lib/utils.js";
 import Message from "../Chatdata/Chat.model.js";
 import cloudinary from "../../lib/cloudinary.js";
+import Chat from "../Groups/Groupschat.model.js";
 
 export const signup = async (req, res) => {
   const { fullName, email, password, role, admin } = req.body;
@@ -215,13 +216,14 @@ const login = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    generateToken(user._id, res);
+    const token = generateToken(user._id, res);
 
     res.status(200).json({
       _id: user._id,
       fullName: user.fullName,
       email: user.email,
       profilePic: user.profilePic,
+      token,
     });
   } catch (error) {
     console.log("Error in login controller", error.message);
@@ -388,4 +390,66 @@ export const getUserById = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+export const getRecentChatUsers = async (req, res) => {
+  try {
+    const loggedInUserId = req.user._id;
+
+    // Find all messages where the user is involved, sorted by latest first
+    const recentMessages = await Message.find({
+      $or: [{ senderId: loggedInUserId }, { receiverId: loggedInUserId }],
+    }).sort({ createdAt: -1 });
+
+    // Map to store unique chat IDs with latest message
+    const chatMap = new Map();
+
+    recentMessages.forEach((message) => {
+      const chatId =
+        message.senderId.toString() === loggedInUserId.toString()
+          ? message.receiverId.toString()
+          : message.senderId.toString();
+
+      if (!chatMap.has(chatId)) {
+        chatMap.set(chatId, {
+          lastMessage: message.text, // Store last message
+          lastMessageTime: message.createdAt, // Store last message time
+        });
+      }
+    });
+
+    // Fetch user or group details
+    const chatUsers = await Promise.all(
+      [...chatMap.keys()].map(async (id) => {
+        const user = await User.findById(id).select("fullName profilePic");
+        if (user) {
+          return {
+            _id: user._id,
+            fullName: user.fullName,
+            profilePic: user.profilePic,
+            isGroup: false,
+            lastMessage: chatMap.get(id).lastMessage,
+            lastMessageTime: chatMap.get(id).lastMessageTime,
+          };
+        }
+        const group = await Chat.findById(id).select("groupName groupImage");
+        if (group) {
+          return {
+            _id: group._id,
+            fullName: group.groupName,
+            profilePic: group.groupImage,
+            isGroup: true,
+            lastMessage: chatMap.get(id).lastMessage,
+            lastMessageTime: chatMap.get(id).lastMessageTime,
+          };
+        }
+        return null;
+      })
+    );
+
+    res.status(200).json(chatUsers.filter(Boolean)); // Remove null values
+  } catch (error) {
+    console.error("Error in getRecentChatUsers:", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 export { login };
