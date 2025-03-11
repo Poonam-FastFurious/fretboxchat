@@ -163,6 +163,14 @@ export const sendMessage = async (req, res) => {
     );
     chat.latestMessage =
       messageType === "text" ? savedMessage.content : mediaUrl;
+
+    if (receiverId) {
+      chat.unreadMessages.set(
+        receiverId.toString(),
+        (chat.unreadMessages.get(receiverId.toString()) || 0) + 1
+      );
+    }
+
     await chat.save();
     // ✅ SOCKET.IO - Send message in real-time
     const receiverSocketId = getReceiverSocketId(receiverId);
@@ -331,6 +339,32 @@ export const deleteMessage = async (req, res) => {
     res.status(200).json({ message: "Message deleted successfully" });
   } catch (error) {
     console.log("❌ Error in deleteMessage:", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const markMessagesAsRead = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const userId = req.user._id;
+
+    console.log("📖 Marking messages as read for:", { chatId, userId });
+
+    // ✅ Find Chat
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      return res.status(404).json({ error: "Chat not found" });
+    }
+
+    // ✅ Reset Unread Count
+    if (chat.unreadMessages.has(userId.toString())) {
+      chat.unreadMessages.set(userId.toString(), 0);
+      await chat.save();
+    }
+
+    res.status(200).json({ message: "Messages marked as read" });
+  } catch (error) {
+    console.log("❌ Error in markMessagesAsRead:", error.message);
     res.status(500).json({ error: "Internal server error" });
   }
 };
