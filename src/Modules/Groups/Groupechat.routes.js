@@ -1,15 +1,15 @@
-import express from "express";
-import { protectRoute } from "../../middleware/auth.middleware.js";
-import {
-  createGroupChat,
-  getGroupById,
-  getGroupChats,
-} from "./Groupchat.controller.js";
+// import express from "express";
+// import { protectRoute } from "../../Middleware/auth.middleware.js";
+// import {
+//   createGroupChat,
+//   getGroupById,
+//   getGroupChats,
+// } from "./Groupchat.controller.js";
 
-const router = express.Router();
+// const router = express.Router();
 
-router.post("/create-group", protectRoute, createGroupChat);
-router.get("/allgroup", protectRoute, getGroupChats);
-router.get("/single", protectRoute, getGroupById);
+// router.post("/create-group", protectRoute, createGroupChat);
+// router.get("/allgroup", protectRoute, getGroupChats);
+// router.get("/single", protectRoute, getGroupById);
 
-export default router;
+// export default router;

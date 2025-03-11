@@ -21,12 +21,13 @@ app.use(
 );
 
 import userRoutes from "./src/Modules/User/User.routes.js";
-import messageRoutes from "./src/Modules/Chatdata/Chat.routes.js";
-import groupRoutes from "./src/Modules/Groups/Groupechat.routes.js";
+import chatRoutes from "./src/Modules/Chats/Chat.routes.js";
+import messageRoutes from "./src/Modules/Message/Message.routes.js";
 
 app.use("/api/v1/user", userRoutes);
-app.use("/api/v1/chat_message", messageRoutes);
-app.use("/api/v1/group", groupRoutes);
+app.use("/api/v1/chats", chatRoutes);
+app.use("/api/v1/message", messageRoutes);
+
 
 server.listen(PORT, () => {
   console.log("serveris listen on port" + PORT);

@@ -1,38 +1,30 @@
 import jwt from "jsonwebtoken";
+import { User } from "../Modules/User/User.model.js";
 
-import { User } from "../Modules/User/User.model.js"
-export const protectRoute = async (req, res, next) => {
+
+export const authenticateUser = async (req, res, next) => {
   try {
-    // console.log("Cookies in request:", req.cookies); // Debugging
-    // console.log("Headers in request:", req.headers); // Debugging
-    let token = req.cookies.jwt;
-
-    // ✅ Agar Cookies me na mile to Headers me dekho
-    if (!token && req.headers.authorization?.startsWith("Bearer ")) {
-      token = req.headers.authorization.split(" ")[1];
-    }
+    // 1️⃣ Get Token from Cookies OR Authorization Header
+    const token =
+      req.cookies?.accessToken || req.headers.authorization?.split(" ")[1];
 
     if (!token) {
-      return res.status(401).json({ message: "Unauthorized - No Token Provided" });
+      return res.status(401).json({ message: "Unauthorized: No token provided" });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // 2️⃣ Verify JWT Token
+    const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
 
-    if (!decoded) {
-      return res.status(401).json({ message: "Unauthorized - Invalid Token" });
-    }
-
-    const user = await User.findById(decoded.userId).select("-password");
-
+    // 3️⃣ Fetch User from Database
+    const user = await User.findById(decoded._id).select("-password -refreshToken");
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(401).json({ message: "Unauthorized: User not found" });
     }
 
-    req.user = user;
+    req.user = user; // Attach user to request
     next();
   } catch (error) {
-    console.log("Error in protectRoute middleware:", error.message);
-    res.status(500).json({ message: "Internal server error" });
+    console.error("JWT Error:", error.message);
+    return res.status(401).json({ message: "Unauthorized: Invalid token" });
   }
 };
-
