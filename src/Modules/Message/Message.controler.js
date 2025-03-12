@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import cloudinary from "../../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../../lib/socket.js";
 import { Chat } from "../Chats/Chat.Model.js";
@@ -112,7 +113,6 @@ export const sendMessage = async (req, res) => {
     // ✅ Handle Image/Video Upload
     if (req.file) {
       console.log("🖼 Uploading file to Cloudinary...");
-
       mediaUrl = await new Promise((resolve, reject) => {
         cloudinary.uploader
           .upload_stream(
@@ -127,7 +127,6 @@ export const sendMessage = async (req, res) => {
           )
           .end(req.file.buffer);
       });
-
       console.log("✅ Uploaded File URL:", mediaUrl);
     }
 
@@ -147,7 +146,32 @@ export const sendMessage = async (req, res) => {
 
     console.log("🎯 Receiver User ID:", receiverId);
 
-    // ✅ Create Message
+    // ✅ Create a temporary message object for immediate use
+    const tempMessage = {
+      _id: new mongoose.Types.ObjectId(), // Generate a temporary ID
+      sender: {
+        _id: senderId,
+        name: req.user.name,
+        email: req.user.email,
+        profilePic: req.user.profilePic,
+      },
+      chat: chatId,
+      content: messageType === "text" ? content : null,
+      media: mediaUrl,
+      messageType,
+      createdAt: new Date(),
+    };
+
+    // ✅ SOCKET.IO - Send message in real-time **before saving to DB**
+    const receiverSocketId = getReceiverSocketId(receiverId);
+    if (receiverSocketId) {
+      console.log("📡 Sending message to receiver via Socket.IO...");
+      io.to(receiverSocketId).emit("newMessage", tempMessage);
+    } else {
+      console.log("📥 User is offline, message will be saved in DB.");
+    }
+
+    // ✅ Save the message in DB asynchronously
     const newMessage = new Message({
       sender: senderId,
       chat: chatId,
@@ -161,6 +185,8 @@ export const sendMessage = async (req, res) => {
       "sender",
       "name email profilePic"
     );
+
+    // ✅ Update chat's latest message
     chat.latestMessage =
       messageType === "text" ? savedMessage.content : mediaUrl;
 
@@ -172,14 +198,6 @@ export const sendMessage = async (req, res) => {
     }
 
     await chat.save();
-    // ✅ SOCKET.IO - Send message in real-time
-    const receiverSocketId = getReceiverSocketId(receiverId);
-    if (receiverSocketId) {
-      console.log("📡 Sending message to receiver via Socket.IO...");
-      io.to(receiverSocketId).emit("newMessage", savedMessage);
-    } else {
-      console.log("📥 User is offline, message stored in DB");
-    }
 
     res.status(201).json(savedMessage);
   } catch (error) {
