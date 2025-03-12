@@ -44,62 +44,94 @@ export const getMessages = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
 // export const sendMessage = async (req, res) => {
-//       try {
-//             const { content, } = req.body;
-//             const { chatId } = req.params;
-//             const senderId = req.user._id;
-//             console.log("📨 Sending message in chat:", chatId, "from sender:", senderId);
-//             let imageUrl = null;
-//             if (req.file) {
-//                   const uploadResponse = await new Promise((resolve, reject) => {
-//                         cloudinary.uploader.upload_stream(
-//                               { resource_type: "image" },
-//                               (error, result) => {
-//                                     if (error) return reject(error);
-//                                     resolve(result.secure_url);
-//                               }
-//                         ).end(req.file.buffer);
-//                   });
+//   try {
+//     const { content, messageType } = req.body;
+//     const { chatId } = req.params;
+//     const senderId = req.user._id;
+//     let mediaUrl = null;
 
-//                   imageUrl = uploadResponse;
+//     console.log("📨 Sending message:", { chatId, senderId, messageType });
+
+//     // ✅ Handle Image/Video Upload
+//     if (req.file) {
+//       console.log("🖼 Uploading file to Cloudinary...");
+
+//       mediaUrl = await new Promise((resolve, reject) => {
+//         cloudinary.uploader
+//           .upload_stream(
+//             { resource_type: messageType === "video" ? "video" : "image" },
+//             (error, result) => {
+//               if (error) {
+//                 console.log("❌ Cloudinary upload error:", error);
+//                 return reject(error);
+//               }
+//               resolve(result.secure_url);
 //             }
-//             const chat = await Chat.findById(chatId);
-//             if (!chat) {
-//                   return res.status(404).json({ error: "Chat not found" });
-//             }
-//             const receiverId = chat.participants.find((user) => user.toString() !== senderId.toString());
-//             if (!receiverId) {
-//                   return res.status(400).json({ error: "Invalid chat participants" });
-//             }
+//           )
+//           .end(req.file.buffer);
+//       });
 
-//             console.log("🎯 Receiver User ID:", receiverId);
-//             const newMessage = new Message({
-//                   sender: senderId,
-//                   chat: chatId,
-//                   content,
-//                   messageType: "text",
-//                   image: imageUrl,
-//             });
+//       console.log("✅ Uploaded File URL:", mediaUrl);
+//     }
 
-//             await newMessage.save();
-//             const savedMessage = await newMessage.populate("sender", "name email profilePic");
-//             const receiverSocketId = getReceiverSocketId(receiverId);
+//     // ✅ Find Chat
+//     const chat = await Chat.findById(chatId);
+//     if (!chat) {
+//       return res.status(404).json({ error: "Chat not found" });
+//     }
 
-//             if (receiverSocketId) {
+//     // ✅ Find Receiver
+//     const receiverId = chat.participants.find(
+//       (user) => user.toString() !== senderId.toString()
+//     );
+//     if (!receiverId) {
+//       return res.status(400).json({ error: "Invalid chat participants" });
+//     }
 
-//                   io.to(receiverSocketId).emit("newMessage", savedMessage);
-//             } else {
-//                   console.log("User is offline, message stored in DB");
-//             }
+//     console.log("🎯 Receiver User ID:", receiverId);
 
-//             res.status(201).json(savedMessage);
-//       } catch (error) {
-//             console.log("Error in sendMessage controller: ", error.message);
-//             res.status(500).json({ error: "Internal server error" });
-//       }
+//     // ✅ Create Message
+//     const newMessage = new Message({
+//       sender: senderId,
+//       chat: chatId,
+//       content: messageType === "text" ? content : null,
+//       media: mediaUrl,
+//       messageType,
+//     });
+
+//     await newMessage.save();
+//     const savedMessage = await newMessage.populate(
+//       "sender",
+//       "name email profilePic"
+//     );
+//     chat.latestMessage =
+//       messageType === "text" ? savedMessage.content : mediaUrl;
+
+//     if (receiverId) {
+//       chat.unreadMessages.set(
+//         receiverId.toString(),
+//         (chat.unreadMessages.get(receiverId.toString()) || 0) + 1
+//       );
+//     }
+
+//     await chat.save();
+//     // ✅ SOCKET.IO - Send message in real-time
+//     const receiverSocketId = getReceiverSocketId(receiverId);
+//     if (receiverSocketId) {
+//       console.log("📡 Sending message to receiver via Socket.IO...");
+//       io.to(receiverSocketId).emit("newMessage", savedMessage);
+//     } else {
+//       console.log("📥 User is offline, message stored in DB");
+//     }
+
+//     res.status(201).json(savedMessage);
+//   } catch (error) {
+//     console.log("❌ Error in sendMessage:", error.message);
+//     res.status(500).json({ error: "Internal server error" });
+//   }
 // };
-
 export const sendMessage = async (req, res) => {
   try {
     const { content, messageType } = req.body;
@@ -173,13 +205,22 @@ export const sendMessage = async (req, res) => {
 
     await chat.save();
     // ✅ SOCKET.IO - Send message in real-time
-    const receiverSocketId = getReceiverSocketId(receiverId);
-    if (receiverSocketId) {
-      console.log("📡 Sending message to receiver via Socket.IO...");
-      io.to(receiverSocketId).emit("newMessage", savedMessage);
-    } else {
-      console.log("📥 User is offline, message stored in DB");
-    }
+    chat.participants.forEach((participantId) => {
+      console.log(`🔍 Checking participant: ${participantId}`);
+      if (participantId.toString() !== senderId.toString()) {
+        const receiverSocketId = getReceiverSocketId(participantId);
+        if (receiverSocketId) {
+          console.log(
+            `📡 Sending message to ${participantId} via Socket.IO...`
+          );
+          io.to(receiverSocketId).emit("newMessage", savedMessage);
+        } else {
+          console.log(
+            `📥 User ${participantId} is offline, message stored in DB`
+          );
+        }
+      }
+    });
 
     res.status(201).json(savedMessage);
   } catch (error) {
