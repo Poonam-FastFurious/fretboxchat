@@ -108,25 +108,112 @@ export const signup = async (req, res) => {
   }
 };
 export const login = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, fretBoxUserId, role, admin, superAdmin } = req.body;
+
   try {
-    const user = await User.findOne({ email });
+    let user = await User.findOne({ email });
 
     if (!user) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      if (!fretBoxUserId || isNaN(fretBoxUserId)) {
+        return res
+          .status(400)
+          .json({ message: "Valid Fretbox User ID is required" });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      let assignedRole = role || "User";
+
+      let adminObjectId = null;
+      let superAdminObjectId = null;
+
+      if (admin) {
+        const adminUser = await User.findOne({ fretBoxUserId: Number(admin) });
+
+        if (!adminUser || adminUser.role !== "Admin") {
+          return res.status(400).json({ message: "Invalid Admin ID" });
+        }
+
+        adminObjectId = adminUser._id;
+        superAdminObjectId = adminUser.superAdmin; // Automatically assigning SuperAdmin from Admin
+      }
+
+      if (superAdmin) {
+        const superAdminUser = await User.findOne({
+          fretBoxUserId: Number(superAdmin),
+        });
+
+        if (!superAdminUser) {
+          return res.status(400).json({ message: "Invalid SuperAdmin ID" });
+        }
+
+        superAdminObjectId = superAdminUser._id;
+      }
+
+      const newUser = new User({
+        email,
+        fullName: req.body.fullName || email.split("@")[0],
+        password: hashedPassword,
+        fretBoxUserId: Number(fretBoxUserId),
+        role: assignedRole,
+        admin: assignedRole === "User" ? adminObjectId : null,
+        superAdmin:
+          assignedRole === "User"
+            ? superAdminObjectId
+            : assignedRole === "Admin"
+            ? superAdminObjectId || null
+            : null,
+      });
+
+      user = await newUser.save();
+    } else {
+      const isPasswordCorrect = await bcrypt.compare(password, user.password);
+
+      if (!isPasswordCorrect) {
+        return res.status(400).json({ message: "Invalid credentials" });
+      }
+
+      let updateFields = {};
+
+      if (role && role !== user.role) {
+        updateFields.role = role;
+      }
+
+      if (admin && user.role === "User") {
+        const adminUser = await User.findOne({ fretBoxUserId: Number(admin) });
+        if (!adminUser || adminUser.role !== "Admin") {
+          return res.status(400).json({ message: "Invalid Admin ID" });
+        }
+
+        updateFields.admin = adminUser._id;
+        updateFields.superAdmin = adminUser.superAdmin; // Automatically update SuperAdmin
+      }
+
+      if (superAdmin && user.role === "Admin") {
+        const superAdminUser = await User.findOne({
+          fretBoxUserId: Number(superAdmin),
+        });
+        if (!superAdminUser) {
+          return res.status(400).json({ message: "Invalid SuperAdmin ID" });
+        }
+        updateFields.superAdmin = superAdminUser._id;
+      }
+
+      if (Object.keys(updateFields).length > 0) {
+        user = await User.findByIdAndUpdate(user._id, updateFields, {
+          new: true,
+        });
+      }
     }
+
     const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(
       user._id
     );
-    const isPasswordCorrect = await bcrypt.compare(password, user.password);
-    if (!isPasswordCorrect) {
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
 
     const options = {
       httpOnly: true,
       secure: true,
     };
+
     res
       .status(200)
       .cookie("accessToken", accessToken, options)
@@ -136,6 +223,10 @@ export const login = async (req, res) => {
         fullName: user.fullName,
         email: user.email,
         profilePic: user.profilePic,
+        fretBoxUserId: user.fretBoxUserId,
+        role: user.role,
+        admin: user.admin,
+        superAdmin: user.superAdmin,
         accessToken,
         refreshToken,
       });
@@ -144,9 +235,56 @@ export const login = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
+
+// export const login = async (req, res) => {
+//   const { email, password } = req.body;
+//   try {
+//     const user = await User.findOne({ email });
+
+//     if (!user) {
+//       return res.status(400).json({ message: "Invalid credentials" });
+//     }
+//     const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(
+//       user._id
+//     );
+//     const isPasswordCorrect = await bcrypt.compare(password, user.password);
+//     if (!isPasswordCorrect) {
+//       return res.status(400).json({ message: "Invalid credentials" });
+//     }
+
+//     const options = {
+//       httpOnly: true,
+//       secure: true,
+//     };
+//     res
+//       .status(200)
+//       .cookie("accessToken", accessToken, options)
+//       .cookie("refreshToken", refreshToken, options)
+//       .json({
+//         _id: user._id,
+//         fullName: user.fullName,
+//         email: user.email,
+//         profilePic: user.profilePic,
+//         accessToken,
+//         refreshToken,
+//       });
+//   } catch (error) {
+//     console.log("Error in login controller", error.message);
+//     res.status(500).json({ message: "Internal Server Error" });
+//   }
+// };
+
 export const getUserList = async (req, res) => {
   try {
-    const users = await User.find().select("-password -refreshToken"); // Exclude password field
+    const { role } = req.query; // Extract role from query params
+    let filter = {};
+
+    if (role) {
+      filter.role = role; // Apply role filter if provided
+    }
+
+    const users = await User.find(filter).select("-password -refreshToken"); // Exclude password and refreshToken
     res.status(200).json(users);
   } catch (error) {
     console.error("Error fetching users:", error.message);
@@ -163,7 +301,10 @@ export const getUsersForChat = async (req, res) => {
     if (role === "SuperAdmin") {
       // Get only Admins and Users under this SuperAdmin, excluding self
       users = await User.find({
-        $or: [{ role: "Admin", superAdmin: _id }, { role: "User", superAdmin: _id }],
+        $or: [
+          { role: "Admin", superAdmin: _id },
+          { role: "User", superAdmin: _id },
+        ],
         _id: { $ne: _id }, // Exclude requesting user
       }).select("-password -refreshToken");
     } else if (role === "Admin") {
@@ -196,7 +337,6 @@ export const getUsersForChat = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
-
 
 export const logout = async (req, res) => {
   try {
@@ -292,6 +432,108 @@ export const updateUser = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating user:", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const crmLogin = async (req, res) => {
+  const { fullName, email, profilePic, role, admin, superAdmin, mysqlId } =
+    req.body;
+
+  try {
+    if (!email || !role) {
+      return res.status(400).json({ message: "Email and Role are required" });
+    }
+
+    let user = await User.findOne({ email });
+
+    let mongoAdmin = null;
+    let mongoSuperAdmin = null;
+
+    // ✅ Agar Admin Login kar raha hai, uske SuperAdmin ka MongoDB ID map karo
+    if (role === "Admin" && superAdmin) {
+      const superAdminUser = await User.findOne({ mysqlId: superAdmin });
+      if (!superAdminUser || superAdminUser.role !== "SuperAdmin") {
+        return res.status(400).json({ message: "Invalid SuperAdmin ID" });
+      }
+      mongoSuperAdmin = superAdminUser._id;
+    }
+
+    // ✅ Agar User Login kar raha hai, uske Admin ka MongoDB ID map karo
+    if (role === "User" && admin) {
+      const adminUser = await User.findOne({ mysqlId: admin });
+      if (!adminUser || adminUser.role !== "Admin") {
+        return res.status(400).json({ message: "Invalid Admin ID" });
+      }
+      mongoAdmin = adminUser._id;
+    }
+
+    // ✅ Agar user nahi mila, to create karo
+    if (!user) {
+      user = new User({
+        fullName: fullName || "Unknown User",
+        email,
+        password: "",
+        role,
+        profilePic: profilePic || "",
+        admin: mongoAdmin,
+        superAdmin: mongoSuperAdmin,
+        mysqlId: mysqlId || null,
+      });
+      await user.save();
+    } else {
+      // ✅ Agar pehle se hai, to update karo
+      let updatedFields = {};
+      if (mongoAdmin && !user.admin) updatedFields.admin = mongoAdmin;
+      if (mongoSuperAdmin && !user.superAdmin)
+        updatedFields.superAdmin = mongoSuperAdmin;
+
+      if (Object.keys(updatedFields).length > 0) {
+        await User.updateOne({ _id: user._id }, { $set: updatedFields });
+      }
+    }
+
+    // ✅ Check karo ki koi users orphan (admin/superAdmin null) to nahi hain, update them
+    if (role === "Admin") {
+      await User.updateMany(
+        { admin: null, mysqlAdmin: mysqlId }, // Jo admin ke under hone chahiye
+        { $set: { admin: user._id } }
+      );
+    }
+
+    if (role === "SuperAdmin") {
+      await User.updateMany(
+        { superAdmin: null, mysqlSuperAdmin: mysqlId }, // Jo superAdmin ke under hone chahiye
+        { $set: { superAdmin: user._id } }
+      );
+    }
+
+    // ✅ Tokens generate karna
+    const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(
+      user._id
+    );
+    if (!accessToken || !refreshToken) {
+      return res.status(500).json({ message: "Token generation failed" });
+    }
+
+    res
+      .status(200)
+      .cookie("accessToken", accessToken, { httpOnly: true, secure: true })
+      .cookie("refreshToken", refreshToken, { httpOnly: true, secure: true })
+      .json({
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        admin: user.admin,
+        superAdmin: user.superAdmin,
+        profilePic: user.profilePic,
+        mysqlId: user.mysqlId,
+        accessToken,
+        refreshToken,
+      });
+  } catch (error) {
+    console.error("Error in CRM login:", error.message);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };

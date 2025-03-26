@@ -13,8 +13,15 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: true,
       minlength: 6,
+    },
+    phone: {
+      type: String,
+      unique: true,
+    },
+    fretBoxUserId: {
+      type: Number,
+      unique: true,
     },
     profilePic: {
       type: String,
