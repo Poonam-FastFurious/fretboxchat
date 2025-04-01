@@ -9,6 +9,7 @@ import {
   updateProfile,
   updateUser,
   getUsersForChat,
+  getUserById,
 
 } from "./User.controler.js";
 import { authenticateUser } from "../../Middleware/auth.middleware.js";
@@ -24,6 +25,7 @@ router.post("/login", login);
 router.post("/logout", logout);
 router.get("/check", authenticateUser, currentUser);
 router.patch("/update_user", authenticateUser, updateUser);
+router.get("/singleuser/:id", getUserById);
 router.patch(
   "/update-profile",
   authenticateUser,
