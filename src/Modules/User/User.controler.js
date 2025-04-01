@@ -108,7 +108,8 @@ export const signup = async (req, res) => {
   }
 };
 export const login = async (req, res) => {
-  const { email, password, fretBoxUserId, role, admin, superAdmin } = req.body;
+  const { email, fretBoxUserId, role, admin, superAdmin } = req.body;
+  const defaultPassword = 'defaultPassword123'; // Set the default password for all users
 
   try {
     let user = await User.findOne({ email });
@@ -120,7 +121,7 @@ export const login = async (req, res) => {
           .json({ message: "Valid Fretbox User ID is required" });
       }
 
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = await bcrypt.hash(defaultPassword, 10); // Hash the default password
       let assignedRole = role || "User";
 
       let adminObjectId = null;
@@ -152,7 +153,7 @@ export const login = async (req, res) => {
       const newUser = new User({
         email,
         fullName: req.body.fullName || email.split("@")[0],
-        password: hashedPassword,
+        password: hashedPassword, // Use the hashed default password
         fretBoxUserId: Number(fretBoxUserId),
         role: assignedRole,
         admin: assignedRole === "User" ? adminObjectId : null,
@@ -166,12 +167,7 @@ export const login = async (req, res) => {
 
       user = await newUser.save();
     } else {
-      const isPasswordCorrect = await bcrypt.compare(password, user.password);
-
-      if (!isPasswordCorrect) {
-        return res.status(400).json({ message: "Invalid credentials" });
-      }
-
+      // Skip the password verification since we don't want to pass a password
       let updateFields = {};
 
       if (role && role !== user.role) {
@@ -235,6 +231,7 @@ export const login = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
 
 
 // export const login = async (req, res) => {
