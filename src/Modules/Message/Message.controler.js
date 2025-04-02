@@ -7,6 +7,7 @@ export const getMessages = async (req, res) => {
   try {
     const { chatId } = req.params;
     const userId = req.user._id;
+    const { page = 1, limit = 20, search = "" } = req.query; // Default pagination values
 
     if (!chatId) {
       return res.status(400).json({ message: "Chat ID is required" });
@@ -27,10 +28,21 @@ export const getMessages = async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    // Fetch messages for the chat
-    const messages = await Message.find({ chat: chatId })
+    // Create search filter
+    let searchFilter = { chat: chatId };
+    if (search) {
+      searchFilter.content = { $regex: search, $options: "i" }; // Case-insensitive search
+    }
+
+    // Pagination settings
+    const messages = await Message.find(searchFilter)
       .populate("sender", "name email profilePic")
-      .sort({ createdAt: 1 });
+      .sort({ createdAt: -1 }) // Latest messages first
+      .skip((page - 1) * limit) // Skip previous pages
+      .limit(Number(limit)); // Limit the number of messages
+
+    // Total count of messages for frontend pagination
+    const totalMessages = await Message.countDocuments(searchFilter);
 
     // Mark messages as read for the user
     if (chat.unreadMessages.has(userId.toString())) {
@@ -38,7 +50,12 @@ export const getMessages = async (req, res) => {
       await chat.save();
     }
 
-    res.status(200).json(messages);
+    res.status(200).json({
+      messages,
+      totalMessages,
+      currentPage: Number(page),
+      totalPages: Math.ceil(totalMessages / limit),
+    });
   } catch (error) {
     console.log("Error in getMessages controller:", error.message);
     res.status(500).json({ message: "Internal server error" });

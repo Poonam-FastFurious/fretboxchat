@@ -292,41 +292,49 @@ export const getUserList = async (req, res) => {
 export const getUsersForChat = async (req, res) => {
   try {
     const { role, _id, admin, superAdmin } = req.user; // Extract from authenticated user
+    const { userId, userRole } = req.query; // Query parameters for filtering
 
-    let users = [];
+    let filter = { _id: { $ne: _id } }; // Exclude requesting user
 
-    if (role === "SuperAdmin") {
-      // Get only Admins and Users under this SuperAdmin, excluding self
-      users = await User.find({
-        $or: [
+    if (userId) {
+      // If specific userId is provided, fetch only that user
+      filter._id = userId;
+    } else if (userRole) {
+      // If specific role is provided, filter users based on role hierarchy
+      if (role === "SuperAdmin") {
+        if (userRole === "Admin") filter = { role: "Admin", superAdmin: _id };
+        else if (userRole === "User") filter = { role: "User", superAdmin: _id };
+      } else if (role === "Admin") {
+        if (userRole === "User") filter = { role: "User", admin: _id };
+        else if (userRole === "Admin") filter = { role: "Admin", superAdmin: superAdmin };
+      } else if (role === "User") {
+        if (userRole === "Admin") filter = { role: "Admin", _id: admin };
+        else if (userRole === "SuperAdmin") filter = { role: "SuperAdmin", _id: superAdmin };
+        else if (userRole === "User") filter = { role: "User", admin: admin };
+      }
+    } else {
+      // Default case: Fetch all users under respective hierarchy
+      if (role === "SuperAdmin") {
+        filter.$or = [
           { role: "Admin", superAdmin: _id },
           { role: "User", superAdmin: _id },
-        ],
-        _id: { $ne: _id }, // Exclude requesting user
-      }).select("-password -refreshToken");
-    } else if (role === "Admin") {
-      // Get Users under this Admin, other Admins under the same SuperAdmin, and their own SuperAdmin, excluding self
-      users = await User.find({
-        $or: [
-          { role: "User", admin: _id }, // Users under this Admin
-          { role: "Admin", superAdmin: superAdmin }, // Other Admins under the same SuperAdmin
-          { role: "SuperAdmin", _id: superAdmin }, // Their own SuperAdmin
-        ],
-        _id: { $ne: _id }, // Exclude requesting user
-      }).select("-password -refreshToken");
-    } else if (role === "User") {
-      // Get their Admin, their SuperAdmin, and other Users under the same Admin, excluding self
-      users = await User.find({
-        $or: [
-          { role: "Admin", _id: admin }, // Their Admin
-          { role: "SuperAdmin", _id: superAdmin }, // Their SuperAdmin
-          { role: "User", admin: admin }, // Other Users under the same Admin
-        ],
-        _id: { $ne: _id }, // Exclude requesting user
-      }).select("-password -refreshToken");
-    } else {
-      return res.status(403).json({ message: "Unauthorized access" });
+        ];
+      } else if (role === "Admin") {
+        filter.$or = [
+          { role: "User", admin: _id },
+          { role: "Admin", superAdmin: superAdmin },
+          { role: "SuperAdmin", _id: superAdmin },
+        ];
+      } else if (role === "User") {
+        filter.$or = [
+          { role: "Admin", _id: admin },
+          { role: "SuperAdmin", _id: superAdmin },
+          { role: "User", admin: admin },
+        ];
+      }
     }
+
+    const users = await User.find(filter).select("-password -refreshToken");
 
     res.status(200).json(users);
   } catch (error) {
@@ -334,6 +342,7 @@ export const getUsersForChat = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
 
 export const logout = async (req, res) => {
   try {

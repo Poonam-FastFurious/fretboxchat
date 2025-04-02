@@ -20,7 +20,7 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage });
 router.post("/signup", signup);
 router.get("/alluser", getUserList);
-router.get("/forchat",authenticateUser, getUsersForChat);
+router.get("/contact",authenticateUser, getUsersForChat);
 router.post("/login", login);
 router.post("/logout", logout);
 router.get("/check", authenticateUser, currentUser);
