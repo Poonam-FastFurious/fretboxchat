@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { Chat } from "./Chat.Model.js";
+import cloudinary from "../../lib/cloudinary.js";
 
 // Create or get a one-to-one chat
 export const accessChat = async (req, res) => {
@@ -111,7 +112,8 @@ export const getChatProfile = async (req, res) => {
 // Create a group chat
 export const createGroupChat = async (req, res) => {
   try {
-    const { name, users } = req.body; // Users should be an array of user IDs
+    const { name } = req.body;
+    const users = JSON.parse(req.body.users); // users will be sent as JSON array string
     const senderId = req.user._id;
 
     if (!users || users.length < 2) {
@@ -120,20 +122,42 @@ export const createGroupChat = async (req, res) => {
         .json({ message: "At least two users required for a group chat" });
     }
 
-    const groupChat = await Chat.create({
-      isGroup: true,
-      participants: [...users, senderId],
-      groupName: name,
-      groupAdmin: senderId,
-      status: "active",
-    });
+    const createGroup = async (groupImageUrl = null) => {
+      const groupChat = await Chat.create({
+        isGroup: true,
+        participants: [...users, senderId],
+        groupName: name,
+        groupAdmin: senderId,
+        status: "active",
+        groupImage: groupImageUrl, // Optional image
+      });
 
-    await groupChat.populate("participants", "-password");
-    await groupChat.populate("groupAdmin", "-password");
+      await groupChat.populate("participants", "-password");
+      await groupChat.populate("groupAdmin", "-password");
 
-    res.status(201).json(groupChat);
+      res.status(201).json(groupChat);
+    };
+
+    if (req.file) {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { resource_type: "image", folder: "chat_groups" },
+        async (error, result) => {
+          if (error) {
+            console.error("Cloudinary upload error:", error);
+            return res.status(500).json({ message: "Image upload failed" });
+          }
+
+          await createGroup(result.secure_url);
+        }
+      );
+
+      uploadStream.end(req.file.buffer);
+    } else {
+      await createGroup(); // No image uploaded
+    }
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error creating group:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 

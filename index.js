@@ -28,8 +28,7 @@ app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/chats", chatRoutes);
 app.use("/api/v1/message", messageRoutes);
 
-
-server.listen(PORT, () => {
-  console.log("serveris listen on port" + PORT);
+server.listen(PORT, "0.0.0.0", () => {
+  console.log("server is listen on port " + PORT);
   connectDB();
 });

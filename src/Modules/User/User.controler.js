@@ -109,7 +109,7 @@ export const signup = async (req, res) => {
 };
 export const login = async (req, res) => {
   const { email, fretBoxUserId, role, admin, superAdmin } = req.body;
-  const defaultPassword = 'defaultPassword123'; // Set the default password for all users
+  const defaultPassword = "defaultPassword123"; // Set the default password for all users
 
   try {
     let user = await User.findOne({ email });
@@ -232,8 +232,6 @@ export const login = async (req, res) => {
   }
 };
 
-
-
 // export const login = async (req, res) => {
 //   const { email, password } = req.body;
 //   try {
@@ -303,13 +301,16 @@ export const getUsersForChat = async (req, res) => {
       // If specific role is provided, filter users based on role hierarchy
       if (role === "SuperAdmin") {
         if (userRole === "Admin") filter = { role: "Admin", superAdmin: _id };
-        else if (userRole === "User") filter = { role: "User", superAdmin: _id };
+        else if (userRole === "User")
+          filter = { role: "User", superAdmin: _id };
       } else if (role === "Admin") {
         if (userRole === "User") filter = { role: "User", admin: _id };
-        else if (userRole === "Admin") filter = { role: "Admin", superAdmin: superAdmin };
+        else if (userRole === "Admin")
+          filter = { role: "Admin", superAdmin: superAdmin };
       } else if (role === "User") {
         if (userRole === "Admin") filter = { role: "Admin", _id: admin };
-        else if (userRole === "SuperAdmin") filter = { role: "SuperAdmin", _id: superAdmin };
+        else if (userRole === "SuperAdmin")
+          filter = { role: "SuperAdmin", _id: superAdmin };
         else if (userRole === "User") filter = { role: "User", admin: admin };
       }
     } else {
@@ -342,7 +343,6 @@ export const getUsersForChat = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
-
 
 export const logout = async (req, res) => {
   try {
