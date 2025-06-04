@@ -1,3 +1,6 @@
+
+# ///ymhd
+
 info:
   title: Auth API
   version: 1.0.0
@@ -6,7 +9,6 @@ info:
 servers:
   - url: /
     description: Relative base URL (works on any host)
-
 paths:
 /api/v1/user/signup:
   post:
