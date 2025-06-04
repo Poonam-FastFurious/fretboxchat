@@ -1,0 +1,1731 @@
+info:
+  title: Auth API
+  version: 1.0.0
+  description: API for user registration with role-based logic (User, Admin, SuperAdmin)
+
+servers:
+  - url: /
+    description: Relative base URL (works on any host)
+
+paths:
+/api/v1/user/signup:
+  post:
+    summary: Register a new user
+    description: Registers a user with the specified role (User, Admin, or SuperAdmin). Handles role-based logic and generates a JWT token.
+    tags:
+      - Auth
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - fullName
+              - email
+              - password
+              - role
+            properties:
+              fullName:
+                type: string
+                example: John Doe
+              email:
+                type: string
+                format: email
+                example: john@example.com
+              password:
+                type: string
+                format: password
+                minLength: 6
+                example: password123
+              role:
+                type: string
+                enum: [User, Admin, SuperAdmin]
+                example: User
+              admin:
+                type: string
+                description: Required if role is User
+                example: 60f7c67b8f1b2a3d4478f6e1
+              superAdmin:
+                type: string
+                description: Required if role is Admin
+                example: 60f7c67b8f1b2a3d4478f6e2
+    responses:
+      "201":
+        description: User created successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                  example: 60f8e5e7881c2b3d4478f6f1
+                fullName:
+                  type: string
+                  example: John Doe
+                email:
+                  type: string
+                  example: john@example.com
+                role:
+                  type: string
+                  example: User
+                admin:
+                  type: string
+                  example: 60f7c67b8f1b2a3d4478f6e1
+                superAdmin:
+                  type: string
+                  example: 60f7c67b8f1b2a3d4478f6e2
+      "400":
+        description: Bad Request
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: All fields are required
+      "500":
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Internal Server Error
+
+/api/v1/user/login:
+  post:
+    summary: Log in or auto-register user using FretBox ID
+    description: Logs in user based on email and FretBox user ID. Creates user automatically if not found and assigns roles/admins as needed.
+    tags:
+      - Auth
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - email
+              - fretBoxUserId
+            properties:
+              email:
+                type: string
+                format: email
+                example: user@example.com
+              fretBoxUserId:
+                type: integer
+                example: 101
+              fullName:
+                type: string
+                example: Jane Doe
+              role:
+                type: string
+                enum: [User, Admin, SuperAdmin]
+                example: User
+              admin:
+                type: integer
+                description: Fretbox ID of the Admin (required if role is User)
+                example: 102
+              superAdmin:
+                type: integer
+                description: Fretbox ID of the SuperAdmin (optional if role is Admin)
+                example: 103
+    responses:
+      "200":
+        description: Successful login or auto-registration
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                fullName:
+                  type: string
+                email:
+                  type: string
+                profilePic:
+                  type: string
+                  nullable: true
+                fretBoxUserId:
+                  type: integer
+                role:
+                  type: string
+                admin:
+                  type: string
+                  nullable: true
+                superAdmin:
+                  type: string
+                  nullable: true
+                accessToken:
+                  type: string
+                refreshToken:
+                  type: string
+      "400":
+        description: Bad request (invalid admin/superAdmin/Fretbox ID)
+      "500":
+        description: Internal Server Error
+
+/api/v1/user/logout:
+  post:
+    summary: Log out the current user
+    description: Clears access and refresh tokens from cookies, effectively logging out the user.
+    tags:
+      - Auth
+    responses:
+      "200":
+        description: Logout successful
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: User logged out successfully
+      "500":
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Internal Server Error
+
+/api/v1/user/alluser:
+  get:
+    summary: Get list of users
+    description: Returns a list of users. You can optionally filter by role (`User`, `Admin`, or `SuperAdmin`).
+    tags:
+      - User
+    parameters:
+      - name: role
+        in: query
+        description: Filter users by role
+        required: false
+        schema:
+          type: string
+          enum: [User, Admin, SuperAdmin]
+          example: Admin
+    responses:
+      "200":
+        description: List of users fetched successfully
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  _id:
+                    type: string
+                  fullName:
+                    type: string
+                  email:
+                    type: string
+                  role:
+                    type: string
+                  fretBoxUserId:
+                    type: integer
+                  admin:
+                    type: string
+                    nullable: true
+                  superAdmin:
+                    type: string
+                    nullable: true
+                  profilePic:
+                    type: string
+                    nullable: true
+      "500":
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Internal Server Error
+
+/api/v1/user/contact:
+  get:
+    summary: Get users available for chat
+    description: |
+      Fetches a list of users that the currently authenticated user is allowed to chat with.
+      Users are filtered based on the requester's role (SuperAdmin, Admin, or User).
+      You can also query a specific user by ID or filter users by role within the requester's hierarchy.
+    tags:
+      - User
+    security:
+      - bearerAuth: [] # Bearer token
+    parameters:
+      - name: userId
+        in: query
+        description: Fetch specific user by ID
+        required: false
+        schema:
+          type: string
+          example: 661c822ea8a7f3e01b9827bc
+      - name: userRole
+        in: query
+        description: Filter users by role in context of current user's hierarchy
+        required: false
+        schema:
+          type: string
+          enum: [User, Admin, SuperAdmin]
+          example: Admin
+    responses:
+      "200":
+        description: Users fetched successfully for chat
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  _id:
+                    type: string
+                  fullName:
+                    type: string
+                  email:
+                    type: string
+                  role:
+                    type: string
+                  profilePic:
+                    type: string
+                    nullable: true
+                  admin:
+                    type: string
+                    nullable: true
+                  superAdmin:
+                    type: string
+                    nullable: true
+      "401":
+        description: Unauthorized - Missing or invalid token
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Unauthorized
+      "500":
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Internal Server Error
+
+/api/v1/user/profile:
+  patch:
+    summary: Update user's profile picture
+    description: |
+      Allows the authenticated user to upload and update their profile picture.
+      The image is uploaded to Cloudinary, and the user's profile is updated in the database.
+    tags:
+      - User
+    security:
+      - bearerAuth: [] # Bearer token
+    requestBody:
+      content:
+        multipart/form-data:
+          required: true
+          schema:
+            type: object
+            properties:
+              file:
+                type: string
+                format: binary
+                description: The image file to upload as the profile picture.
+    responses:
+      "200":
+        description: Profile picture updated successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                fullName:
+                  type: string
+                email:
+                  type: string
+                profilePic:
+                  type: string
+                  description: The URL of the updated profile picture
+      "400":
+        description: Bad request - No image file uploaded
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Profile pic is required
+      "401":
+        description: Unauthorized - Missing or invalid token
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Unauthorized
+      "500":
+        description: Internal Server Error - Image upload failed
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Image upload failed
+
+/api/v1/user/update-profile:
+  patch:
+    summary: Update user's profile picture
+    description: |
+      Allows the authenticated user to upload and update their profile picture.
+      The image is uploaded to Cloudinary, and the user's profile is updated in the database.
+    tags:
+      - User
+    security:
+      - bearerAuth: [] # Bearer token
+    requestBody:
+      content:
+        multipart/form-data:
+          required: true
+          schema:
+            type: object
+            properties:
+              file:
+                type: string
+                format: binary
+                description: The image file to upload as the profile picture.
+    responses:
+      "200":
+        description: Profile picture updated successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                fullName:
+                  type: string
+                email:
+                  type: string
+                profilePic:
+                  type: string
+                  description: The URL of the updated profile picture
+      "400":
+        description: Bad request - No image file uploaded
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Profile pic is required
+      "401":
+        description: Unauthorized - Missing or invalid token
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Unauthorized
+      "500":
+        description: Internal Server Error - Image upload failed
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Image upload failed
+
+/api/v1/user/update_user:
+  patch:
+    summary: Update user profile information
+    description: |
+      Allows the authenticated user to update their profile information such as
+      full name and email. It updates only the fields provided in the request body.
+    tags:
+      - User
+    security:
+      - bearerAuth: [] # Assumes JWT or session-based auth is required
+    requestBody:
+      content:
+        application/json:
+          required: true
+          schema:
+            type: object
+            properties:
+              fullName:
+                type: string
+                description: The full name of the user.
+              email:
+                type: string
+                format: email
+                description: The email address of the user.
+            required:
+              - fullName
+              - email
+    responses:
+      "200":
+        description: User profile updated successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                fullName:
+                  type: string
+                email:
+                  type: string
+      "400":
+        description: Bad request - Invalid input data
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Invalid input
+      "401":
+        description: Unauthorized - Missing or invalid token
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Unauthorized
+      "404":
+        description: Not found - User not found
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: User not found
+      "500":
+        description: Internal Server Error - Database or server error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Internal Server Error
+
+/api/v1/singleuser/{id}:
+  get:
+    summary: Get user details by ID
+    description: |
+      Fetches the details of a user by their unique ID. The password field is excluded
+      for security reasons.
+    tags:
+      - User
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: The unique ID of the user to fetch.
+        schema:
+          type: string
+    responses:
+      "200":
+        description: User details fetched successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                fullName:
+                  type: string
+                email:
+                  type: string
+                role:
+                  type: string
+                profilePic:
+                  type: string
+                  nullable: true
+      "400":
+        description: Bad request - Invalid ID format
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Invalid user ID
+      "404":
+        description: Not found - User not found
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: User not found
+      "500":
+        description: Internal Server Error - Database or server error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Internal Server Error
+
+/api/v1/user/check:
+  get:
+    summary: Get details of the currently authenticated user
+    description: |
+      Fetches the details of the currently authenticated user. The user must be logged in
+      and provide a valid bearer token in the Authorization header.
+    tags:
+      - User
+    responses:
+      "200":
+        description: Current user details fetched successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                fullName:
+                  type: string
+                email:
+                  type: string
+                role:
+                  type: string
+                profilePic:
+                  type: string
+                  nullable: true
+                admin:
+                  type: string
+                  nullable: true
+                superAdmin:
+                  type: string
+                  nullable: true
+      "401":
+        description: Unauthorized - No valid token provided
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Unauthorized
+      "500":
+        description: Internal Server Error - Server or database error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Internal Server Error
+
+/api/v1/chats/access:
+  post:
+    summary: Access or create one-on-one chat
+    description: Returns the existing chat between two users, or creates a new one if it doesn't exist.
+    tags:
+      - Chat
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              receiverId:
+                type: string
+                description: The ID of the receiver user
+                example: "66214384dd524d7b9f8b56a7"
+    responses:
+      "200":
+        description: Chat accessed or created successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                participants:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                      fullName:
+                        type: string
+                      profilePic:
+                        type: string
+                        nullable: true
+                isGroup:
+                  type: boolean
+                latestMessage:
+                  type: object
+                  nullable: true
+                  properties:
+                    _id:
+                      type: string
+                    content:
+                      type: string
+                    sender:
+                      type: object
+                      properties:
+                        _id:
+                          type: string
+                        fullName:
+                          type: string
+                        profilePic:
+                          type: string
+                status:
+                  type: string
+                  example: active
+      "400":
+        description: Missing receiverId in request body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: ReceiverId is required
+      "500":
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: An error occurred while accessing the chat
+
+/api/v1/chats:
+  get:
+    summary: Fetch all chats for the authenticated user
+    description: Retrieves all direct and group chats that include the logged-in user, sorted by most recently updated.
+    tags:
+      - Chat
+    security:
+      - bearerAuth: []
+    responses:
+      "200":
+        description: List of chats fetched successfully
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  _id:
+                    type: string
+                  participants:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        _id:
+                          type: string
+                        fullName:
+                          type: string
+                        email:
+                          type: string
+                        role:
+                          type: string
+                        profilePic:
+                          type: string
+                          nullable: true
+                  isGroup:
+                    type: boolean
+                  latestMessage:
+                    type: object
+                    nullable: true
+                    properties:
+                      _id:
+                        type: string
+                      content:
+                        type: string
+                      sender:
+                        type: object
+                        properties:
+                          _id:
+                            type: string
+                          fullName:
+                            type: string
+                          profilePic:
+                            type: string
+                  unreadMessages:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        userId:
+                          type: string
+                        count:
+                          type: integer
+                  status:
+                    type: string
+                    example: active
+      "500":
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: An error occurred while fetching chats
+
+/api/v1/chats/group:
+  post:
+    summary: Create a new group chat
+    description: Creates a group chat with at least two users and an optional group image. The current user will be the group admin.
+    tags:
+      - Chat
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+                example: Project Team Alpha
+              users:
+                type: string
+                description: JSON string of user IDs array (excluding current user)
+                example: '["660fe0cc09a91368e7c6373e", "660fe0a809a91368e7c6373b"]'
+              file:
+                type: string
+                format: binary
+                description: Optional group image
+    responses:
+      "201":
+        description: Group chat created successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                isGroup:
+                  type: boolean
+                participants:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                      fullName:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+                      profilePic:
+                        type: string
+                        nullable: true
+                groupName:
+                  type: string
+                groupAdmin:
+                  type: object
+                  properties:
+                    _id:
+                      type: string
+                    fullName:
+                      type: string
+                    email:
+                      type: string
+                    role:
+                      type: string
+                groupImage:
+                  type: string
+                  nullable: true
+                status:
+                  type: string
+                  example: active
+      "400":
+        description: Validation error (e.g., less than 2 users)
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: At least two users required for a group chat
+      "500":
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Internal server error
+
+/api/v1/chat/group/rename:
+  patch:
+    summary: Rename a group chat
+    description: Allows the group admin or authorized user to rename an existing group chat.
+    tags:
+      - Chat
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              chatId:
+                type: string
+                description: ID of the group chat to rename
+                example: "661e183f8d1a0f42a9f12345"
+              name:
+                type: string
+                description: New name for the group chat
+                example: "Design Team 2.0"
+    responses:
+      "200":
+        description: Group chat renamed successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                groupName:
+                  type: string
+                participants:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                      fullName:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+                      profilePic:
+                        type: string
+                        nullable: true
+      "404":
+        description: Chat not found
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Chat not found
+      "500":
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Internal server error
+
+/api/v1/chats/add:
+  put:
+    summary: Add a user to a group chat
+    description: Adds a new participant to an existing group chat.
+    tags:
+      - Chat
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              chatId:
+                type: string
+                description: ID of the group chat
+                example: "661e183f8d1a0f42a9f12345"
+              userId:
+                type: string
+                description: ID of the user to add to the group
+                example: "661e185a9a1f0b42a9f67890"
+    responses:
+      "200":
+        description: User added to group successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                groupName:
+                  type: string
+                participants:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                      fullName:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+                      profilePic:
+                        type: string
+                        nullable: true
+      "404":
+        description: Chat not found
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Chat not found
+      "500":
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Internal server error
+
+/api/v1/chats/remove:
+  put:
+    summary: Remove a user from a group chat
+    description: Removes a participant from an existing group chat.
+    tags:
+      - Chat
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              chatId:
+                type: string
+                description: ID of the group chat
+                example: "661e183f8d1a0f42a9f12345"
+              userId:
+                type: string
+                description: ID of the user to remove from the group
+                example: "661e185a9a1f0b42a9f67890"
+    responses:
+      "200":
+        description: User removed from group successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                groupName:
+                  type: string
+                participants:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                      fullName:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+                      profilePic:
+                        type: string
+                        nullable: true
+      "404":
+        description: Chat not found
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Chat not found
+      "500":
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Internal server error
+
+/api/v1/chats/{chatId}:
+  get:
+    summary: Get chat profile by ID
+    description: Returns the profile of a chat by ID, including participants, group admin, and latest message.
+    tags:
+      - Chat
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: chatId
+        in: path
+        required: true
+        description: ID of the chat to retrieve
+        schema:
+          type: string
+          example: "661e185a9a1f0b42a9f67890"
+    responses:
+      "200":
+        description: Chat profile retrieved successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                isGroup:
+                  type: boolean
+                groupName:
+                  type: string
+                  nullable: true
+                groupImage:
+                  type: string
+                  nullable: true
+                participants:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                      fullName:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+                      profilePic:
+                        type: string
+                        nullable: true
+                groupAdmin:
+                  type: object
+                  nullable: true
+                  properties:
+                    _id:
+                      type: string
+                    fullName:
+                      type: string
+                    email:
+                      type: string
+                    role:
+                      type: string
+                latestMessage:
+                  type: object
+                  nullable: true
+                  properties:
+                    _id:
+                      type: string
+                    content:
+                      type: string
+                    sender:
+                      type: object
+                      properties:
+                        _id:
+                          type: string
+                        fullName:
+                          type: string
+                        profilePic:
+                          type: string
+      "400":
+        description: Invalid chatId
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Invalid chatId
+      "404":
+        description: Chat not found
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Chat not found
+      "500":
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Internal Server Error
+
+/api/v1/message/send/{chatId}:
+  post:
+    summary: Send a message to a chat
+    description: Sends a message (text, image, or video) to a chat. Supports file uploads via multipart/form-data.
+    tags:
+      - Message
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: chatId
+        in: path
+        required: true
+        description: ID of the chat to send a message to
+        schema:
+          type: string
+          example: "661e185a9a1f0b42a9f67890"
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            properties:
+              content:
+                type: string
+                description: Text content of the message (required for text message)
+              messageType:
+                type: string
+                enum: [text, image, video]
+                description: Type of the message
+              file:
+                type: string
+                format: binary
+                description: Media file to upload (required for image/video)
+    responses:
+      "201":
+        description: Message sent successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                sender:
+                  type: object
+                  properties:
+                    _id:
+                      type: string
+                    name:
+                      type: string
+                    email:
+                      type: string
+                    profilePic:
+                      type: string
+                chat:
+                  type: string
+                content:
+                  type: string
+                  nullable: true
+                media:
+                  type: string
+                  nullable: true
+                messageType:
+                  type: string
+      "400":
+        description: Bad Request (e.g., missing receiver, invalid chat)
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: Chat not found
+      "500":
+        description: Internal Server Error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: Internal server error
+
+/api/v1/message/{chatId}:
+  get:
+    summary: Get messages from a chat
+    description: Retrieves paginated messages from a specific chat. Requires the user to be a participant of the chat.
+    tags:
+      - Message
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: chatId
+        in: path
+        required: true
+        description: ID of the chat to retrieve messages from
+        schema:
+          type: string
+          example: "661e185a9a1f0b42a9f67890"
+      - name: page
+        in: query
+        required: false
+        description: Page number for pagination (default is 1)
+        schema:
+          type: integer
+          example: 1
+      - name: limit
+        in: query
+        required: false
+        description: Number of messages per page (default is 20)
+        schema:
+          type: integer
+          example: 20
+      - name: search
+        in: query
+        required: false
+        description: Search term for filtering messages by content
+        schema:
+          type: string
+          example: "hello"
+    responses:
+      "200":
+        description: Messages retrieved successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                messages:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                      sender:
+                        type: object
+                        properties:
+                          _id:
+                            type: string
+                          name:
+                            type: string
+                          email:
+                            type: string
+                          profilePic:
+                            type: string
+                      content:
+                        type: string
+                        nullable: true
+                      media:
+                        type: string
+                        nullable: true
+                      messageType:
+                        type: string
+                      createdAt:
+                        type: string
+                        format: date-time
+                totalMessages:
+                  type: integer
+                  example: 42
+                currentPage:
+                  type: integer
+                  example: 1
+                totalPages:
+                  type: integer
+                  example: 3
+      "400":
+        description: Missing chat ID
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Chat ID is required
+      "403":
+        description: User not authorized for this chat
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Access denied
+      "404":
+        description: Chat not found
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Chat not found
+      "500":
+        description: Internal server error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: Internal server error
+
+/api/v1/message/send-poll/{chatId}:
+  post:
+    summary: Send a poll in a chat
+    description: Sends a poll to the chat with a question and options. Requires the user to be a participant of the chat.
+    tags:
+      - Poll
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: chatId
+        in: path
+        required: true
+        description: ID of the chat to send the poll in
+        schema:
+          type: string
+          example: "661e185a9a1f0b42a9f67890"
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              question:
+                type: string
+                description: The poll question to ask
+                example: "What's your favorite color?"
+              options:
+                type: array
+                items:
+                  type: string
+                description: The list of options for the poll
+                example: ["Red", "Blue", "Green"]
+    responses:
+      "201":
+        description: Poll created successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                _id:
+                  type: string
+                  example: "643b1234cd4567890abcdef"
+                sender:
+                  type: object
+                  properties:
+                    _id:
+                      type: string
+                      example: "643b1234cd4567890abcdef"
+                    name:
+                      type: string
+                      example: "John Doe"
+                    email:
+                      type: string
+                      example: "john.doe@example.com"
+                    profilePic:
+                      type: string
+                      example: "https://example.com/profile.jpg"
+                messageType:
+                  type: string
+                  example: "poll"
+                poll:
+                  type: object
+                  properties:
+                    question:
+                      type: string
+                      example: "What's your favorite color?"
+                    options:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          optionText:
+                            type: string
+                            example: "Red"
+                          votes:
+                            type: integer
+                            example: 0
+                          votesby:
+                            type: array
+                            items:
+                              type: string
+                            example: []
+      "400":
+        description: Invalid poll options or missing required data
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: "Poll must have a question and at least two options"
+      "404":
+        description: Chat not found
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: "Chat not found"
+      "500":
+        description: Internal server error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: "Internal server error"
+
+/api/v1/message/vote:
+  post:
+    summary: Vote on a poll option
+    description: Allows a user to vote on a poll in a chat. A user can change their vote, which removes the previous vote and updates the poll accordingly.
+    tags:
+      - Poll
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              messageId:
+                type: string
+                description: The ID of the message containing the poll
+                example: "643b1234cd4567890abcdef"
+              optionIndex:
+                type: integer
+                description: The index of the option the user is voting for
+                example: 1
+    responses:
+      '200':
+        description: Successfully voted or updated vote
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: "Vote updated"
+                poll:
+                  type: object
+                  properties:
+                    question:
+                      type: string
+                      example: "What's your favorite color?"
+                    options:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          optionText:
+                            type: string
+                            example: "Red"
+                          votes:
+                            type: integer
+                            example: 3
+                          votesby:
+                            type: array
+                            items:
+                              type: string
+                            example: ["643b1234cd4567890abcdef", "643b5678cd4567890abcdef"]
+      '400':
+        description: Invalid option index or invalid vote attempt
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: "Invalid option index."
+      '404':
+        description: Poll or message not found
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: "Poll not found or invalid."
+      '500':
+        description: Internal server error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: "Internal server error"
+
+/api/v1/message/{messageId}:
+  delete:
+    summary: Delete a message
+    description: Allows a user to delete their own message. Only the sender can delete their message.
+    tags:
+      - Message
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: messageId
+        in: path
+        required: true
+        description: The ID of the message to delete
+        schema:
+          type: string
+          example: "643b1234cd4567890abcdef"
+    responses:
+      '200':
+        description: Message deleted successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: "Message deleted successfully"
+      '400':
+        description: Bad request, e.g., invalid messageId format
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: "Invalid messageId"
+      '403':
+        description: Unauthorized to delete the message (user is not the sender)
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: "Unauthorized to delete this message"
+      '404':
+        description: Message not found
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: "Message not found"
+      '500':
+        description: Internal server error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error:
+                  type: string
+                  example: "Internal server error"
