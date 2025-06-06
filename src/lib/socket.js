@@ -7,11 +7,13 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: ["https://fretbox.brandbell.in", "http://localhost:5173"],
+    origin: [
+      "https://fretbox.brandbell.in",
+      "http://localhost:5173",
+      "https://admin.binarydots.com",
+    ],
   },
 });
-
-
 
 // used to store online users
 const userSocketMap = {}; // {userId: socketId}
