@@ -58,7 +58,7 @@ export const getMessages = async (req, res) => {
     });
   } catch (error) {
     console.log("Error in getMessages controller:", error.message);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -153,50 +153,89 @@ export const sendMessage = async (req, res) => {
   try {
     const { content, messageType } = req.body;
     const { chatId } = req.params;
-    const senderId = req.user._id;
+    const senderId = req.user?._id;
+
+    if (!chatId) {
+      return res
+        .status(400)
+        .json({ message: "Missing required route param: chatId" });
+    }
+
+    if (!senderId) {
+      return res.status(401).json({
+        message:
+          "Unauthorized: req.user._id is missing. Check your auth middleware.",
+      });
+    }
+
+    if (!messageType) {
+      return res
+        .status(400)
+        .json({ message: "Missing required field: messageType in body" });
+    }
+
+    if (messageType === "text" && !content) {
+      return res
+        .status(400)
+        .json({ message: "Content is required for text messages" });
+    }
+
     let mediaUrl = null;
 
-    console.log("📨 Sending message:", { chatId, senderId, messageType });
-
-    // ✅ Handle Image/Video Upload
+    // ⬆️ Upload file to Cloudinary if file present
     if (req.file) {
-      console.log("🖼 Uploading file to Cloudinary...");
-
-      mediaUrl = await new Promise((resolve, reject) => {
-        cloudinary.uploader
-          .upload_stream(
-            { resource_type: messageType === "video" ? "video" : "image" },
-            (error, result) => {
-              if (error) {
-                console.log("❌ Cloudinary upload error:", error);
-                return reject(error);
+      try {
+        mediaUrl = await new Promise((resolve, reject) => {
+          cloudinary.uploader
+            .upload_stream(
+              { resource_type: messageType === "video" ? "video" : "image" },
+              (error, result) => {
+                if (error) {
+                  console.error("❌ Cloudinary upload error:", error);
+                  return reject("Cloudinary upload failed: " + error.message);
+                }
+                resolve(result.secure_url);
               }
-              resolve(result.secure_url);
-            }
-          )
-          .end(req.file.buffer);
-      });
-
-      console.log("✅ Uploaded File URL:", mediaUrl);
+            )
+            .end(req.file.buffer);
+        });
+      } catch (cloudError) {
+        return res.status(500).json({
+          message: "Failed to upload media to Cloudinary",
+          error: cloudError,
+        });
+      }
     }
 
-    // ✅ Find Chat
+    // 🔍 Find Chat
     const chat = await Chat.findById(chatId);
     if (!chat) {
-      return res.status(404).json({ error: "Chat not found" });
+      return res
+        .status(404)
+        .json({ message: `Chat not found with ID: ${chatId}` });
     }
 
-    // ✅ Find Receiver
+    // 🔍 Validate sender is part of chat
+    const isParticipant = chat.participants.some(
+      (id) => id.toString() === senderId.toString()
+    );
+    if (!isParticipant) {
+      return res.status(403).json({
+        message: "Access denied: Sender is not a participant in the chat",
+      });
+    }
+
+    // 🔁 Find Receiver
     const receiverId = chat.participants.find(
       (user) => user.toString() !== senderId.toString()
     );
     if (!receiverId) {
-      return res.status(400).json({ error: "Invalid chat participants" });
+      return res
+        .status(400)
+        .json({ message: "Invalid chat: No receiver found" });
     }
 
-    console.log("🎯 Receiver User ID:", receiverId);
-
-    // ✅ Create Message
+    // ✉️ Create message
     const newMessage = new Message({
       sender: senderId,
       chat: chatId,
@@ -206,13 +245,17 @@ export const sendMessage = async (req, res) => {
     });
 
     await newMessage.save();
+
     const savedMessage = await newMessage.populate(
       "sender",
       "name email profilePic"
     );
+
+    // 🔁 Update chat
     chat.latestMessage =
       messageType === "text" ? savedMessage.content : mediaUrl;
 
+    // 🟡 Mark unread count
     if (receiverId) {
       chat.unreadMessages.set(
         receiverId.toString(),
@@ -221,28 +264,27 @@ export const sendMessage = async (req, res) => {
     }
 
     await chat.save();
-    // ✅ SOCKET.IO - Send message in real-time
+
+    // 📡 Emit via Socket.IO
     chat.participants.forEach((participantId) => {
-      console.log(`🔍 Checking participant: ${participantId}`);
       if (participantId.toString() !== senderId.toString()) {
         const receiverSocketId = getReceiverSocketId(participantId);
         if (receiverSocketId) {
-          console.log(
-            `📡 Sending message to ${participantId} via Socket.IO...`
-          );
           io.to(receiverSocketId).emit("newMessage", savedMessage);
         } else {
-          console.log(
-            `📥 User ${participantId} is offline, message stored in DB`
-          );
+          console.log(`ℹ️ User ${participantId} is offline.`);
         }
       }
     });
 
     res.status(201).json(savedMessage);
   } catch (error) {
-    console.log("❌ Error in sendMessage:", error.message);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("❌ Error in sendMessage controller:", error);
+    res.status(500).json({
+      message: "Internal Server Error: Unable to send message",
+      error: error.message,
+      suggestion: "Ensure chatId is valid and Cloudinary is reachable",
+    });
   }
 };
 
@@ -250,32 +292,65 @@ export const sendPoll = async (req, res) => {
   try {
     const { question, options } = req.body;
     const { chatId } = req.params;
-    const senderId = req.user._id;
+    const senderId = req.user?._id;
 
     console.log("📊 Creating poll:", { chatId, senderId, question });
 
-    // ✅ Validate Poll Options
-    if (!question || !options || options.length < 2) {
+    // 🛑 Validate Inputs
+    if (!chatId) {
       return res
         .status(400)
-        .json({ error: "Poll must have a question and at least two options" });
+        .json({ message: "Missing required route param: chatId" });
     }
 
-    // ✅ Find Chat
+    if (!senderId) {
+      return res.status(401).json({
+        message:
+          "Unauthorized: req.user._id is missing. Check authentication middleware.",
+      });
+    }
+
+    if (
+      !question ||
+      !options ||
+      !Array.isArray(options) ||
+      options.length < 2
+    ) {
+      return res.status(400).json({
+        message: "Poll must have a valid question and at least two options.",
+        suggestion:
+          "Ensure body has: { question: string, options: string[] (min 2) }",
+      });
+    }
+
+    // 🔍 Find Chat
     const chat = await Chat.findById(chatId);
     if (!chat) {
-      return res.status(404).json({ error: "Chat not found" });
+      return res
+        .status(404)
+        .json({ message: `Chat not found with ID: ${chatId}` });
     }
 
-    // ✅ Find Receiver
+    // ✅ Verify Sender is part of Chat
+    const isParticipant = chat.participants.some(
+      (user) => user.toString() === senderId.toString()
+    );
+    if (!isParticipant) {
+      return res.status(403).json({
+        message: "Access denied: You are not a participant of this chat.",
+      });
+    }
+
+    // 🔍 Find Receiver
     const receiverId = chat.participants.find(
       (user) => user.toString() !== senderId.toString()
     );
     if (!receiverId) {
-      return res.status(400).json({ error: "Invalid chat participants" });
+      return res.status(400).json({
+        message: "Invalid chat: No valid receiver found.",
+        suggestion: "Ensure chat has at least 2 participants.",
+      });
     }
-
-    console.log("🎯 Receiver User ID:", receiverId);
 
     // ✅ Create Poll Message
     const newPoll = new Message({
@@ -286,28 +361,33 @@ export const sendPoll = async (req, res) => {
         question,
         options: options.map((option) => ({
           optionText: option,
-          votes: 0, // Fixed: Set votes to 0 instead of an array
-          votesby: [], // Empty array for tracking voters
+          votes: 0,
+          votesby: [],
         })),
       },
     });
 
     await newPoll.save();
+
     const savedPoll = await newPoll.populate("sender", "name email profilePic");
 
-    // ✅ SOCKET.IO - Send poll in real-time
+    // 📡 Emit Poll
     const receiverSocketId = getReceiverSocketId(receiverId);
     if (receiverSocketId) {
       console.log("📡 Sending poll to receiver via Socket.IO...");
       io.to(receiverSocketId).emit("newMessage", savedPoll);
     } else {
-      console.log("📥 User is offline, poll stored in DB");
+      console.log("📥 Receiver offline, poll stored in DB");
     }
 
     res.status(201).json(savedPoll);
   } catch (error) {
-    console.log("❌ Error in sendPoll:", error.message);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("❌ Error in sendPoll controller:", error);
+    res.status(500).json({
+      message: "Internal Server Error: Unable to send poll",
+      error: error.message,
+      suggestion: "Check chatId validity, request structure, and DB connection",
+    });
   }
 };
 
@@ -355,7 +435,7 @@ export const voteOnPoll = async (req, res) => {
     res.status(200).json({ message: "Vote updated", poll: message.poll });
   } catch (error) {
     console.log("Error in voteOnPoll controller:", error.message);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: error.message });
   }
 };
 
@@ -397,7 +477,7 @@ export const deleteMessage = async (req, res) => {
     res.status(200).json({ message: "Message deleted successfully" });
   } catch (error) {
     console.log("❌ Error in deleteMessage:", error.message);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: error.message });
   }
 };
 
@@ -423,6 +503,6 @@ export const markMessagesAsRead = async (req, res) => {
     res.status(200).json({ message: "Messages marked as read" });
   } catch (error) {
     console.log("❌ Error in markMessagesAsRead:", error.message);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: error.message });
   }
 };

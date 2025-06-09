@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { generateToken } from "../../lib/utils.js";
 
 import cloudinary from "../../lib/cloudinary.js";
+import e from "express";
 
 const generateAccessAndRefereshTokens = async (userId) => {
   try {
@@ -104,13 +105,12 @@ export const signup = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in signup controller:", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    res.status(500).json({ message: error.message });
   }
 };
 export const login = async (req, res) => {
   const { email, fretBoxUserId, role, admin, superAdmin } = req.body;
-  const defaultPassword = "defaultPassword123"; // Set the default password for all users
-
+  const defaultPassword = "123456";
   try {
     let user = await User.findOne({ email });
 
@@ -227,8 +227,7 @@ export const login = async (req, res) => {
         refreshToken,
       });
   } catch (error) {
-    console.log("Error in login controller", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -283,7 +282,7 @@ export const getUserList = async (req, res) => {
     res.status(200).json(users);
   } catch (error) {
     console.error("Error fetching users:", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -340,7 +339,7 @@ export const getUsersForChat = async (req, res) => {
     res.status(200).json(users);
   } catch (error) {
     console.error("Error fetching users for chat:", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -353,7 +352,7 @@ export const logout = async (req, res) => {
       .json({ message: "User logged out successfully" });
   } catch (error) {
     console.error("Error in logout controller:", error);
-    res.status(500).json({ message: "Internal Server Error" });
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -374,7 +373,7 @@ export const currentUser = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching current user:", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    res.status(500).json({ message: error.message });
   }
 };
 export const updateProfile = async (req, res) => {
@@ -391,7 +390,7 @@ export const updateProfile = async (req, res) => {
       async (error, result) => {
         if (error) {
           console.log("Cloudinary upload error:", error);
-          return res.status(500).json({ message: "Image upload failed" });
+          return res.status(500).json({ message: error.message });
         }
 
         // Update user profile picture in database
@@ -408,7 +407,7 @@ export const updateProfile = async (req, res) => {
     uploadResponse.end(req.file.buffer);
   } catch (error) {
     console.log("Error in update profile:", error);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -438,7 +437,7 @@ export const updateUser = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating user:", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -554,6 +553,6 @@ export const getUserById = async (req, res) => {
     res.status(200).json(user);
   } catch (error) {
     console.error("Error fetching user:", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    res.status(500).json({ message: error.message });
   }
 };

@@ -157,7 +157,7 @@ export const createGroupChat = async (req, res) => {
     }
   } catch (error) {
     console.error("Error creating group:", error);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: error.message });
   }
 };
 
