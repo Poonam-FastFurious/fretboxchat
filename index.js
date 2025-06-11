@@ -27,10 +27,12 @@ app.use(
 import userRoutes from "./src/Modules/User/User.routes.js";
 import chatRoutes from "./src/Modules/Chats/Chat.routes.js";
 import messageRoutes from "./src/Modules/Message/Message.routes.js";
+import communitiesRoutes from "./src/Modules/Community/Community.routes.js";
 
 app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/chats", chatRoutes);
 app.use("/api/v1/message", messageRoutes);
+app.use("/api/v1/community", communitiesRoutes);
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log("server is listen on port " + PORT);

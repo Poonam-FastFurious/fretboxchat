@@ -156,33 +156,26 @@ export const sendMessage = async (req, res) => {
     const senderId = req.user?._id;
 
     if (!chatId) {
-      return res
-        .status(400)
-        .json({ message: "Missing required route param: chatId" });
+      return res.status(400).json({ message: "Missing required route param: chatId" });
     }
 
     if (!senderId) {
       return res.status(401).json({
-        message:
-          "Unauthorized: req.user._id is missing. Check your auth middleware.",
+        message: "Unauthorized: req.user._id is missing. Check your auth middleware.",
       });
     }
 
     if (!messageType) {
-      return res
-        .status(400)
-        .json({ message: "Missing required field: messageType in body" });
+      return res.status(400).json({ message: "Missing required field: messageType in body" });
     }
 
     if (messageType === "text" && !content) {
-      return res
-        .status(400)
-        .json({ message: "Content is required for text messages" });
+      return res.status(400).json({ message: "Content is required for text messages" });
     }
 
     let mediaUrl = null;
 
-    // ⬆️ Upload file to Cloudinary if file present
+    // Upload media if present
     if (req.file) {
       try {
         mediaUrl = await new Promise((resolve, reject) => {
@@ -207,15 +200,13 @@ export const sendMessage = async (req, res) => {
       }
     }
 
-    // 🔍 Find Chat
+    // Find chat
     const chat = await Chat.findById(chatId);
     if (!chat) {
-      return res
-        .status(404)
-        .json({ message: `Chat not found with ID: ${chatId}` });
+      return res.status(404).json({ message: `Chat not found with ID: ${chatId}` });
     }
 
-    // 🔍 Validate sender is part of chat
+    // Validate sender
     const isParticipant = chat.participants.some(
       (id) => id.toString() === senderId.toString()
     );
@@ -225,17 +216,7 @@ export const sendMessage = async (req, res) => {
       });
     }
 
-    // 🔁 Find Receiver
-    const receiverId = chat.participants.find(
-      (user) => user.toString() !== senderId.toString()
-    );
-    if (!receiverId) {
-      return res
-        .status(400)
-        .json({ message: "Invalid chat: No receiver found" });
-    }
-
-    // ✉️ Create message
+    // Create new message
     const newMessage = new Message({
       sender: senderId,
       chat: chatId,
@@ -245,29 +226,28 @@ export const sendMessage = async (req, res) => {
     });
 
     await newMessage.save();
+    const savedMessage = await newMessage.populate("sender", "name email profilePic");
 
-    const savedMessage = await newMessage.populate(
-      "sender",
-      "name email profilePic"
-    );
+    // Update latest message in chat
+    chat.latestMessage = messageType === "text" ? savedMessage.content : mediaUrl;
 
-    // 🔁 Update chat
-    chat.latestMessage =
-      messageType === "text" ? savedMessage.content : mediaUrl;
-
-    // 🟡 Mark unread count
-    if (receiverId) {
-      chat.unreadMessages.set(
-        receiverId.toString(),
-        (chat.unreadMessages.get(receiverId.toString()) || 0) + 1
-      );
-    }
+    // Mark unread for all participants (except sender)
+    chat.participants.forEach((participantId) => {
+      const idStr = participantId.toString();
+      if (idStr !== senderId.toString()) {
+        chat.unreadMessages.set(
+          idStr,
+          (chat.unreadMessages.get(idStr) || 0) + 1
+        );
+      }
+    });
 
     await chat.save();
 
-    // 📡 Emit via Socket.IO
+    // Emit message to all participants (except sender)
     chat.participants.forEach((participantId) => {
-      if (participantId.toString() !== senderId.toString()) {
+      const idStr = participantId.toString();
+      if (idStr !== senderId.toString()) {
         const receiverSocketId = getReceiverSocketId(participantId);
         if (receiverSocketId) {
           io.to(receiverSocketId).emit("newMessage", savedMessage);
@@ -287,6 +267,7 @@ export const sendMessage = async (req, res) => {
     });
   }
 };
+
 
 export const sendPoll = async (req, res) => {
   try {

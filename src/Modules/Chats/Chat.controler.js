@@ -116,7 +116,7 @@ export const createGroupChat = async (req, res) => {
     const users = JSON.parse(req.body.users); // users will be sent as JSON array string
     const senderId = req.user._id;
 
-    if (!users || users.length < 2) {
+    if (!users || users.length < 1) {
       return res
         .status(400)
         .json({ message: "At least two users required for a group chat" });

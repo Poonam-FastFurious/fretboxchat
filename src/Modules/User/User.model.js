@@ -19,10 +19,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       unique: true,
     },
-    fretBoxUserId: {
-      type: Number,
-      unique: true,
-    },
+
     profilePic: {
       type: String,
       default: "",
@@ -32,13 +29,10 @@ const userSchema = new mongoose.Schema(
       enum: ["User", "Admin", "SuperAdmin"],
       default: "User",
     },
-    superAdmin: {
+    community: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User", // Reference to College (SuperAdmin)
-    },
-    admin: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User", // Reference to Warden (Admin)
+      ref: "Community",
+      required: true,
     },
     refreshToken: {
       type: String,
