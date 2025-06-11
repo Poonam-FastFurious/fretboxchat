@@ -617,24 +617,14 @@ export const getUsersForChat = async (req, res) => {
 };
 
 export const checkUserExists = async (req, res) => {
-  const { email, communityId } = req.query;
+  const { email } = req.query;
 
   try {
-    if (!email || !communityId) {
-      return res.status(400).json({ message: "Missing email or communityId" });
+    if (!email) {
+      return res.status(400).json({ message: "Missing email" });
     }
 
-    // Step 1: First resolve the community string id to its actual ObjectId
-    const community = await Community.findOne({ communityId });
-    if (!community) {
-      return res.status(404).json({ message: "Community not found" });
-    }
-
-    // Step 2: Now check user based on email + resolved community ObjectId
-    const user = await User.findOne({
-      email,
-      community: community._id,
-    });
+    const user = await User.findOne({ email });
 
     res.json({ exists: !!user });
   } catch (err) {
