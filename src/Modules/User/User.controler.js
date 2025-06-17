@@ -632,3 +632,112 @@ export const checkUserExists = async (req, res) => {
     res.status(500).json({ message: "Internal error", error: err.message });
   }
 };
+
+export const checkSignupOrLogin = async (req, res) => {
+  const {
+    fullName,
+    email,
+    password,
+    phone,
+    role,
+    profilePic,
+    communityId,
+  } = req.body;
+
+  try {
+    if (!email || !password || !communityId) {
+      return res.status(400).json({ message: "Email, password, and communityId are required" });
+    }
+
+    // Check community exists
+    const community = await Community.findOne({ communityId });
+    if (!community) {
+      return res.status(404).json({ message: "Community not found" });
+    }
+
+    // Check if user exists
+    let user = await User.findOne({ email }).populate("community");
+
+    if (user) {
+      // User exists -> try login
+      if (!user.community || user.community.communityId !== communityId) {
+        return res.status(403).json({ message: "User does not belong to this organization" });
+      }
+
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(user._id);
+
+      const options = {
+        httpOnly: true,
+        secure: true,
+      };
+
+      return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", refreshToken, options)
+        .json({
+          message: "Login successful",
+          _id: user._id,
+          fullName: user.fullName,
+          email: user.email,
+          role: user.role,
+          profilePic: user.profilePic,
+          community: {
+            communityId: user.community.communityId,
+            name: user.community.name,
+            description: user.community.description,
+          },
+          accessToken,
+          refreshToken,
+        });
+    } else {
+      // User does not exist -> create account
+      if (!fullName) {
+        return res.status(400).json({ message: "Full name is required for signup" });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      user = new User({
+        fullName,
+        email,
+        password: hashedPassword,
+        phone,
+        role,
+        profilePic,
+        community: community._id,
+      });
+
+      await user.save();
+
+      const accessToken = user.generateAccessToken();
+      const refreshToken = user.generateRefreshToken();
+
+      user.refreshToken = refreshToken;
+      await user.save();
+
+      return res.status(201).json({
+        message: "User created and logged in successfully",
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        community: {
+          communityId: community.communityId,
+          name: community.name,
+          description: community.description,
+        },
+        accessToken,
+        refreshToken,
+      });
+    }
+  } catch (error) {
+    console.error("CheckSignupOrLogin Error:", error);
+    return res.status(500).json({ message: "Internal server error", error: error.message });
+  }
+};

@@ -11,6 +11,7 @@ import {
   getUsersForChat,
   getUserById,
   checkUserExists,
+  checkSignupOrLogin,
 } from "./User.controler.js";
 import { authenticateUser } from "../../Middleware/auth.middleware.js";
 const router = express.Router();
@@ -21,6 +22,7 @@ router.post("/signup", signup);
 router.get("/alluser", getUserList);
 router.get("/contact", authenticateUser, getUsersForChat);
 router.post("/login", login);
+router.post("/login-new", checkSignupOrLogin);
 router.post("/logout", logout);
 router.get("/checkuser", checkUserExists);
 router.get("/check", authenticateUser, currentUser);
