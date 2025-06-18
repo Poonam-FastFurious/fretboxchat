@@ -9,6 +9,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: [
+      "https://chattest.binarydots.com",
       "https://fretbox.brandbell.in",
       "http://localhost:5173",
       "https://admin.binarydots.com",
